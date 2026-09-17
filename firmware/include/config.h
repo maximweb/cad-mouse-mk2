@@ -43,7 +43,6 @@
 
 // SLEEP power-saving behavior
 #define SLEEP_SAMPLE_INTERVAL_MS 100      // Poll sensors and buttons at 10 Hz while waiting for motion
-#define RP2040_SLEEP_SYS_CLOCK_KHZ 50000  // Keep clk_sys above the 48 MHz USB requirement while sleeping
 #define SLEEP_WAKE_THRESHOLD 5.0f         // Per-axis field change required to resume normal processing
 #define SLEEP_BASELINE_ALPHA 0.02f        // Slowly follow sensor drift while the device remains idle
 #define SLEEP_WAKE_GRACE_MS 1000          // Prevent immediate re-entry while the first active report is produced

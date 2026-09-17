@@ -14,19 +14,10 @@ namespace PowerManager {
 #if defined(BOARD_RP2040) || defined(BOARD_RP2350)
 namespace {
 
-#ifdef BOARD_RP2040
-// XIAO RP2040 onboard LED GPIOs from the board schematic. They are not
-// Arduino D-pin aliases and are separate from the application's external LEDs.
-constexpr uint8_t ONBOARD_NEOPIXEL_POWER_PIN = 11u; // Active high
-constexpr uint8_t ONBOARD_NEOPIXEL_DATA_PIN = 12u;
-constexpr uint8_t ONBOARD_LED_GREEN_PIN = 16u; // Status RGB LED is active low
-constexpr uint8_t ONBOARD_LED_RED_PIN = 17u;
-constexpr uint8_t ONBOARD_LED_BLUE_PIN = 25u;
-#else
-// XIAO RP2350 onboard loads. The addressable RGB LED has no power-enable
-// GPIO, so hold its data input low. The yellow user LED is active low.
+#ifdef BOARD_RP2350
+// XIAO RP2350 onboard GPIOs without Arduino-Pico pin macros.
+// The addressable RGB LED has no power-enable GPIO, so hold its data input low.
 constexpr uint8_t ONBOARD_RGB_DATA_PIN = 22u;
-constexpr uint8_t ONBOARD_USER_LED_PIN = 25u;
 constexpr uint8_t BATTERY_SENSE_ENABLE_PIN = 19u; // Active high
 #endif
 
@@ -65,58 +56,45 @@ constexpr uint32_t SLEEP_EN1 =
   CLOCKS_SLEEP_EN1_CLK_SYS_SRAM4_BITS |
   CLOCKS_SLEEP_EN1_CLK_USB_USBCTRL_BITS |
   CLOCKS_SLEEP_EN1_CLK_SYS_USBCTRL_BITS;
-
-static_assert(RP2040_SLEEP_SYS_CLOCK_KHZ > 48000, "USB requires clk_sys above 48 MHz");
 #else
 // RP2350 has 63 clock destinations split over two sleep-enable words. Keep
 // both USB clocks, both timer blocks and their tick sources, I2C1 used by
-// Wire1, GPIO, clock/power control, XIP, and every SRAM bank. Compute masks
-// from SDK destination numbers to avoid RP2040/RP2350 register-name overlap.
-constexpr uint32_t sleepEn0Bit(clock_dest_num_t destination)
-{
-    return 1u << static_cast<uint32_t>(destination);
-}
-
-constexpr uint32_t sleepEn1Bit(clock_dest_num_t destination)
-{
-    return 1u << (static_cast<uint32_t>(destination) - 32u);
-}
-
+// Wire1, GPIO, clock/power control, XIP, and every SRAM bank.
 constexpr uint32_t SLEEP_EN0 =
-  sleepEn0Bit(CLK_DEST_SYS_CLOCKS) |
-  sleepEn0Bit(CLK_DEST_SYS_ACCESSCTRL) |
-  sleepEn0Bit(CLK_DEST_SYS_BUSCTRL) |
-  sleepEn0Bit(CLK_DEST_SYS_BUSFABRIC) |
-  sleepEn0Bit(CLK_DEST_SYS_I2C1) |
-  sleepEn0Bit(CLK_DEST_SYS_IO) |
-  sleepEn0Bit(CLK_DEST_SYS_PADS) |
-  sleepEn0Bit(CLK_DEST_SYS_PLL_USB) |
-  sleepEn0Bit(CLK_DEST_REF_POWMAN) |
-  sleepEn0Bit(CLK_DEST_SYS_POWMAN) |
-  sleepEn0Bit(CLK_DEST_SYS_RESETS) |
-  sleepEn0Bit(CLK_DEST_SYS_SIO);
+  CLOCKS_SLEEP_EN0_CLK_SYS_CLOCKS_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_ACCESSCTRL_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_BUSCTRL_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_BUSFABRIC_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_I2C1_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_IO_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_PADS_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_PLL_USB_BITS |
+  CLOCKS_SLEEP_EN0_CLK_REF_POWMAN_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_POWMAN_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_RESETS_BITS |
+  CLOCKS_SLEEP_EN0_CLK_SYS_SIO_BITS;
 
 constexpr uint32_t SLEEP_EN1 =
-  sleepEn1Bit(CLK_DEST_SYS_SRAM0) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM1) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM2) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM3) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM4) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM5) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM6) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM7) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM8) |
-  sleepEn1Bit(CLK_DEST_SYS_SRAM9) |
-  sleepEn1Bit(CLK_DEST_SYS_SYSCFG) |
-  sleepEn1Bit(CLK_DEST_REF_TICKS) |
-  sleepEn1Bit(CLK_DEST_SYS_TICKS) |
-  sleepEn1Bit(CLK_DEST_SYS_TIMER0) |
-  sleepEn1Bit(CLK_DEST_SYS_TIMER1) |
-  sleepEn1Bit(CLK_DEST_SYS_USBCTRL) |
-  sleepEn1Bit(CLK_DEST_USB) |
-  sleepEn1Bit(CLK_DEST_SYS_WATCHDOG) |
-  sleepEn1Bit(CLK_DEST_SYS_XIP) |
-  sleepEn1Bit(CLK_DEST_SYS_XOSC);
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM0_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM1_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM2_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM3_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM4_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM5_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM6_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM7_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM8_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SRAM9_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_SYSCFG_BITS |
+  CLOCKS_SLEEP_EN1_CLK_REF_TICKS_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_TICKS_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_TIMER0_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_TIMER1_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_USBCTRL_BITS |
+  CLOCKS_SLEEP_EN1_CLK_USB_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_WATCHDOG_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_XIP_BITS |
+  CLOCKS_SLEEP_EN1_CLK_SYS_XOSC_BITS;
 #endif
 
 void setOutputLevel(uint8_t pin, uint8_t level)
@@ -131,14 +109,15 @@ void setOutputLevel(uint8_t pin, uint8_t level)
 void begin()
 {
 #ifdef BOARD_RP2040
-    setOutputLevel(ONBOARD_NEOPIXEL_POWER_PIN, LOW);
-    setOutputLevel(ONBOARD_NEOPIXEL_DATA_PIN, LOW);
-    setOutputLevel(ONBOARD_LED_GREEN_PIN, HIGH);
-    setOutputLevel(ONBOARD_LED_RED_PIN, HIGH);
-    setOutputLevel(ONBOARD_LED_BLUE_PIN, HIGH);
+    setOutputLevel(NEOPIXEL_POWER, LOW); // Active high
+    setOutputLevel(PIN_NEOPIXEL, LOW);
+    // The onboard status RGB LED is active low.
+    setOutputLevel(PIN_LED_G, HIGH);
+    setOutputLevel(PIN_LED_R, HIGH);
+    setOutputLevel(PIN_LED_B, HIGH);
 #elif defined(BOARD_RP2350)
     setOutputLevel(ONBOARD_RGB_DATA_PIN, LOW);
-    setOutputLevel(ONBOARD_USER_LED_PIN, HIGH);
+    setOutputLevel(LED_BUILTIN, HIGH); // Yellow user LED is active low
     setOutputLevel(BATTERY_SENSE_ENABLE_PIN, LOW);
 #endif
 }
@@ -160,18 +139,7 @@ void enterSleep()
     g_awake_sleep_en1 = clocks_hw->sleep_en[1];
 #endif
 
-#ifdef BOARD_RP2040
-    // Keep clk_sys above the RP2040's 48 MHz USB requirement. If the requested
-    // frequency cannot be generated, leave all sleep settings untouched.
-    if (!set_sys_clock_khz(RP2040_SLEEP_SYS_CLOCK_KHZ, false)) {
-        return;
-    }
-#else
-    // RP2350 can run clk_sys directly from the 48 MHz USB PLL. The SDK helper
-    // also shuts down PLL_SYS, saving its quiescent current while USB remains
-    // enumerated and available as a wake source.
-    set_sys_clock_48mhz();
-#endif
+set_sys_clock_48mhz();
 
 #ifdef BOARD_RP2040
     clocks_hw->sleep_en0 = SLEEP_EN0;
