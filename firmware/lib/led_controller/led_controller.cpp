@@ -130,6 +130,11 @@ void LEDController::fade_off(uint32_t duration_ms)
     start_fade(0x000000, 0, duration_ms, true);
 }
 
+bool LEDController::is_fading() const
+{
+    return m_fade_active;
+}
+
 void LEDController::start_fade(uint32_t target_color, uint8_t target_brightness, uint32_t duration_ms, bool turn_off_when_complete)
 {
     uint8_t target_r, target_g, target_b;

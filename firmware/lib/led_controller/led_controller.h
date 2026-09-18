@@ -60,6 +60,7 @@ public:
     void off();
     void fade_on(uint32_t hex_color, uint32_t duration_ms);
     void fade_off(uint32_t duration_ms);
+    bool is_fading() const;
     // Inputs are normalized knob translation/tilt values in the range [-1, 1].
     void update(float input_x = 0.0f, float input_y = 0.0f, float input_rx = 0.0f, float input_ry = 0.0f);
 

@@ -47,8 +47,8 @@ String StateMachine::get_state_name()
             return "RUNNING";
         case State::RUNNING_WITHOUT_CALIBRATION:
             return "RUNNING_WITHOUT_CALIBRATION";
-        case State::RUNNING_NO_LED:
-            return "RUNNING_NO_LED";
+        case State::SLEEP:
+            return "SLEEP";
         default:
             return "UNKNOWN_STATE";
     }
@@ -147,7 +147,7 @@ void StateMachine::enter_RUNNING()
 {
     const State old_state = m_state;
     if (change_state(State::RUNNING)) {
-        if (old_state == State::RUNNING_NO_LED) {
+        if (old_state == State::SLEEP) {
             m_led_controller.fade_on(LED_RUNNING_COLOR, 1000);
         }
         else {
@@ -169,10 +169,10 @@ void StateMachine::enter_RUNNING_WITHOUT_CALIBRATION()
     }
 }
 
-void StateMachine::enter_RUNNING_NO_LED()
+void StateMachine::enter_SLEEP()
 {
     const State old_state = m_state;
-    if (change_state(State::RUNNING_NO_LED)) {
+    if (change_state(State::SLEEP)) {
         if (old_state == State::RUNNING) {
             m_led_controller.fade_off(2000);
         }

@@ -4,6 +4,7 @@
 
 #include "button_controller.h"
 #include "calibration.h"
+#include "core_mailbox.h"
 #include "dipole_model.h"
 #include "extended_kalman_filter.h"
 #include "hall_controller.h"
@@ -11,6 +12,8 @@
 #include "led_controller.h"
 #include "normalization.h"
 #include "performance_profiler.h"
+#include "power_manager.h"
+#include "sleep_controller.h"
 #include "state_machine.h"
 
 #if DEBUG_MAIN_SERIAL
@@ -66,38 +69,7 @@ ExtendedKalmanFilter ekf = ExtendedKalmanFilter();
 ButtonController buttonController = ButtonController(PIN_LEFT_BTN, PIN_RIGHT_BTN);
 StateMachine stateMachine = StateMachine(ledController, dipoleModel);
 HIDController hidController = HIDController();
-
-/*
-    SHARED DATA STRUCTURES FOR CORE 0 AND CORE 1 COMMUNICATION
-*/
-
-// Seqlock counters for lock-free single-writer/single-reader mailboxes.
-// Even value: stable payload, odd value: writer is updating payload.
-volatile uint32_t raw_mailbox_seq = 0;
-volatile uint32_t filtered_mailbox_seq = 0;
-
-// Shared raw sensor data mailbox (Core 0 producer -> Core 1 consumer)
-struct RawSensorData {
-    float rawData[9];      // 3 sensors, each with 3 axes (X, Y, Z)
-    uint32_t timestamp_us; // Timestamp of the last update in microseconds
-};
-volatile RawSensorData sharedRawSensorData;
-
-// Shared filtered data mailbox (Core 1 producer -> Core 0 consumer)
-struct FilteredData {
-    float x, y, z;       // Filtered translation data
-    float rx, ry, rz;    // Filtered rotation data
-    float vx, vy, vz;    // Filtered translation velocity data
-    float vrx, vry, vrz; // Filtered rotation velocity data
-    float dt;            // Time delta for the last update in seconds
-};
-volatile FilteredData sharedFilteredData;
-
-/*
-    THREAD-SAFE LAST FILTERED DATA STORAGE
-    This is used to store the latest filtered data received from Core 1 in a thread-safe manner,
-    so that it can be accessed in the main loop without race conditions.
-*/
+SleepController sleepController = SleepController();
 
 float latest_estimated_state[12] = {0.0f};
 
@@ -169,6 +141,8 @@ namespace {
 
 void setup()
 {
+    PowerManager::begin();
+
     Serial.begin(115200);
 
     // Initialize HID controller for USB communication
@@ -267,47 +241,21 @@ void loop()
             break;
         }
 
-        case StateMachine::State::RUNNING_NO_LED:
         case StateMachine::State::RUNNING_WITHOUT_CALIBRATION:
         case StateMachine::State::RUNNING: {
-            // RUNNING state: Normal operation,
+            // RUNNING state: Normal operation
             // Check for Core 1 response and update the latest estimated state
             // read raw sensor data, send to Core 1 for processing
-            // TODO: Send via HID to host computer
 
-            // Consume latest filtered data using seqlock snapshot.
+            // Ensure modules and Core 1 are in the correct state
+            PowerManager::exitSleep();
+            hallController.enterFastMode();
+            CoreMailbox::setCore1Sleeping(false);
+
             static uint32_t last_filtered_seq = 0;
-            uint32_t filtered_s1 = 0;
-            uint32_t filtered_s2 = 0;
-            FilteredData local_filtered = {};
+            CoreMailbox::FilteredData local_filtered = {};
 
-            do {
-                filtered_s1 = filtered_mailbox_seq;
-                if (filtered_s1 & 1u) {
-                    continue;
-                }
-
-                __dmb();
-                local_filtered.x = sharedFilteredData.x;
-                local_filtered.y = sharedFilteredData.y;
-                local_filtered.z = sharedFilteredData.z;
-                local_filtered.rx = sharedFilteredData.rx;
-                local_filtered.ry = sharedFilteredData.ry;
-                local_filtered.rz = sharedFilteredData.rz;
-                local_filtered.vx = sharedFilteredData.vx;
-                local_filtered.vy = sharedFilteredData.vy;
-                local_filtered.vz = sharedFilteredData.vz;
-                local_filtered.vrx = sharedFilteredData.vrx;
-                local_filtered.vry = sharedFilteredData.vry;
-                local_filtered.vrz = sharedFilteredData.vrz;
-                local_filtered.dt = sharedFilteredData.dt;
-                __dmb();
-
-                filtered_s2 = filtered_mailbox_seq;
-            } while ((filtered_s1 != filtered_s2) || (filtered_s2 & 1u));
-
-            if (filtered_s2 != 0 && filtered_s2 != last_filtered_seq) {
-                last_filtered_seq = filtered_s2;
+            if (CoreMailbox::consumeFiltered(last_filtered_seq, local_filtered)) {
 
                 stateMachine.set_last_filtered_data_received_time_ms(now);
 
@@ -315,24 +263,15 @@ void loop()
                 lite_profiler_on_new_filtered_value(now);
 #endif
 
-                latest_estimated_state[0] = local_filtered.x;
-                latest_estimated_state[1] = local_filtered.y;
-                latest_estimated_state[2] = local_filtered.z;
-                latest_estimated_state[3] = local_filtered.rx;
-                latest_estimated_state[4] = local_filtered.ry;
-                latest_estimated_state[5] = local_filtered.rz;
-                latest_estimated_state[6] = local_filtered.vx;
-                latest_estimated_state[7] = local_filtered.vy;
-                latest_estimated_state[8] = local_filtered.vz;
-                latest_estimated_state[9] = local_filtered.vrx;
-                latest_estimated_state[10] = local_filtered.vry;
-                latest_estimated_state[11] = local_filtered.vrz;
+                for (int index = 0; index < 12; ++index) {
+                    latest_estimated_state[index] = local_filtered.state[index];
+                }
 
                 // Print roundtrip time between consecutive readings->filtering->return
                 // Implies frequency of HID updates must be less than this
                 float dt_ms = local_filtered.dt * 1e3;
                 MAIN_TIMING_LOG_PRINT("Filter DT: ");
-                MAIN_TIMING_LOG_PRINTF("%.3f", dt_ms);
+                MAIN_TIMING_LOG_PRINT(dt_ms);
                 MAIN_TIMING_LOG_PRINTLN(" ms");
 
 #if DEBUG_MAIN_SERIAL
@@ -343,61 +282,69 @@ void loop()
 #endif
             }
 
-            // Publish latest raw sample (overwrite mailbox; no queue backlog).
             PERFORMANCE_BEGIN(0, PerformanceProfiler::Section::CORE0_SENSOR_READ);
             sensor_status = hallController.read(rawSensorData);
             PERFORMANCE_END(0, PerformanceProfiler::Section::CORE0_SENSOR_READ);
-
 #if DEBUG_MAIN_SERIAL
             Helpers::print_raw_sensor_data(rawSensorData);
 #endif
 
             if (sensor_status == HALL_STATUS_OK) {
                 PERFORMANCE_BEGIN(0, PerformanceProfiler::Section::CORE0_HANDOVER);
-                const uint32_t seq0 = raw_mailbox_seq;
-                raw_mailbox_seq = seq0 + 1u; // mark write-in-progress (odd)
-                __dmb();
-
-                for (int i = 0; i < 9; ++i) {
-                    sharedRawSensorData.rawData[i] = rawSensorData[i];
-                }
-                sharedRawSensorData.timestamp_us = micros();
-
-                __dmb();
-                raw_mailbox_seq = seq0 + 2u; // mark stable payload (even)
+                CoreMailbox::publishRaw(rawSensorData, micros());
                 PERFORMANCE_END(0, PerformanceProfiler::Section::CORE0_HANDOVER);
             }
 
-            // TODO: Send HID data at fixed intervals > dt of Kalman
-
-            // Timeout check (no sensor readings) -> SENSOR_RECONNECT state
             if (now - stateMachine.get_last_filtered_data_received_time_ms() > RUNNING_STATE_READ_ERROR_TIMEOUT_MS) {
                 stateMachine.enter_SENSOR_ERROR();
                 break;
             }
 
-            // Transition between different RUNNING_... states
-            if (now - hidController.get_last_report_time_ms() > RUNNING_STATE_INACTIVITY_TIMEOUT_MS) {
-                // Transition to RUNNING_NO_LED on inactivity.
+            const bool wake_grace_active = sleepController.wakeGraceActive(now);
+            if (!wake_grace_active && now - hidController.get_last_report_time_ms() > RUNNING_STATE_INACTIVITY_TIMEOUT_MS) {
+                // Transition to SLEEP on inactivity.
                 // We can infer inactivity by checking time last HID report was sent
                 // as we only send HID on changes in axes or buttons.
-                stateMachine.enter_RUNNING_NO_LED(); // does nothing if already in RUNNING_NO_LED state
-                break;
+                stateMachine.enter_SLEEP();
             }
             else {
-                // Transition back to RUNNING or RUNNING_WITHOUT_CALIBRATION on activity,
-                // depending on whether calibration data is available.
                 if (stateMachine.get_calibration_load_state() != Calibration::LoadState::NO_FILE_USING_DEFAULTS) {
                     stateMachine.enter_RUNNING(); // does nothing if already in RUNNING state
-                    break;
                 }
                 else {
                     stateMachine.enter_RUNNING_WITHOUT_CALIBRATION(); // does nothing if already in RUNNING_WITHOUT_CALIBRATION state
-                    break;
                 }
             }
             break;
         }
+
+        case StateMachine::State::SLEEP: {
+            CoreMailbox::setCore1Sleeping(true);
+            const bool host_activity_recent = sleepController.wakeGraceActive(now) || now - hidController.get_last_report_time_ms() <= RUNNING_STATE_INACTIVITY_TIMEOUT_MS;
+            const SleepController::Result sleep_result = sleepController.update(now, host_activity_recent, hallController, ledController);
+
+            if (sleep_result == SleepController::Result::SENSOR_TIMEOUT) {
+                stateMachine.enter_SENSOR_ERROR();
+                break;
+            }
+
+            if (sleep_result == SleepController::Result::WAKE_REQUESTED) {
+                CoreMailbox::setCore1Sleeping(false);
+                for (int i = 0; i < 12; i++) {
+                    latest_estimated_state[i] = 0.0;
+                }
+                hidController.sendReport(latest_estimated_state, 0, true);
+
+                if (stateMachine.get_calibration_load_state() != Calibration::LoadState::NO_FILE_USING_DEFAULTS) {
+                    stateMachine.enter_RUNNING(); // does nothing if already in RUNNING state
+                }
+                else {
+                    stateMachine.enter_RUNNING_WITHOUT_CALIBRATION(); // does nothing if already in RUNNING_WITHOUT_CALIBRATION state
+                }
+            }
+            break;
+        }
+
         default: {
             // Serial.println("Unknown state. Should not happen.");
             break;
@@ -437,18 +384,19 @@ void loop()
         MAIN_LOG_PRINTLN("Right button released");
         buttons &= ~0x0002; // Clear bit 1 for right button release
     }
-    hidController.sendReport(latest_estimated_state, buttons);
+    hidController.sendReport(latest_estimated_state, buttons, false);
 
     // LED controller update
-    ledController.update(
-      latest_estimated_state[0],
-      latest_estimated_state[1],
-      latest_estimated_state[3],
-      latest_estimated_state[4]);
+    ledController.update(latest_estimated_state[0], latest_estimated_state[1], latest_estimated_state[3], latest_estimated_state[4]);
 
 #if defined(ENABLE_PERFORMANCE_PROFILING) && (PERFORMANCE_PROFILING_LEVEL >= 2)
     PerformanceProfiler::print_if_due(0, now, PERFORMANCE_PRINT_INTERVAL_MS);
 #endif
+
+    // Delay next iteration if sleeping
+    if (PowerManager::sleepActive()) {
+        delay(SLEEP_SAMPLE_INTERVAL_MS);
+    }
 }
 
 void setup1()
@@ -459,35 +407,19 @@ void setup1()
 
 void loop1()
 {
-    // Consume latest raw sample using seqlock snapshot.
+    if (CoreMailbox::core1Sleeping()) {
+        delay(SLEEP_SAMPLE_INTERVAL_MS);
+        return;
+    }
+
     static uint32_t last_time_us = 0;
     static uint32_t last_raw_seq = 0;
     static bool is_first_run = true;
+    CoreMailbox::RawSensorData local_sample = {};
 
-    uint32_t raw_s1 = 0;
-    uint32_t raw_s2 = 0;
-    RawSensorData local_sample = {};
-
-    do {
-        raw_s1 = raw_mailbox_seq;
-        if (raw_s1 & 1u) {
-            continue;
-        }
-
-        __dmb();
-        for (int i = 0; i < 9; ++i) {
-            local_sample.rawData[i] = sharedRawSensorData.rawData[i];
-        }
-        local_sample.timestamp_us = sharedRawSensorData.timestamp_us;
-        __dmb();
-
-        raw_s2 = raw_mailbox_seq;
-    } while ((raw_s1 != raw_s2) || (raw_s2 & 1u));
-
-    if (raw_s2 == 0 || raw_s2 == last_raw_seq) {
+    if (!CoreMailbox::consumeRaw(last_raw_seq, local_sample)) {
         return;
     }
-    last_raw_seq = raw_s2;
 
     // On first run, we don't have a previous timestamp to calculate dt,
     // but we still can add data to the EKF and establish a baseline.
@@ -499,36 +431,15 @@ void loop1()
         // Update EKF with the first set of raw sensor data to establish a baseline
         float local_raw[9];
         for (int i = 0; i < 9; ++i) {
-            local_raw[i] = local_sample.rawData[i];
+            local_raw[i] = local_sample.values[i];
         }
         ekf.update(local_raw, dipoleModel);
-
-        // Publish filtered baseline once so Core 0 can consume it.
-        const uint32_t filtered_seq0 = filtered_mailbox_seq;
-        filtered_mailbox_seq = filtered_seq0 + 1u;
-        __dmb();
 
         float estimated_state_first[12];
         float deadzone_normalized_state_first[12];
         ekf.get_state(estimated_state_first);
         Normalization::apply_normalization_deadzone_isolation(estimated_state_first, deadzone_normalized_state_first);
-
-        sharedFilteredData.x = deadzone_normalized_state_first[0];
-        sharedFilteredData.y = deadzone_normalized_state_first[1];
-        sharedFilteredData.z = deadzone_normalized_state_first[2];
-        sharedFilteredData.rx = deadzone_normalized_state_first[3];
-        sharedFilteredData.ry = deadzone_normalized_state_first[4];
-        sharedFilteredData.rz = deadzone_normalized_state_first[5];
-        sharedFilteredData.vx = deadzone_normalized_state_first[6];
-        sharedFilteredData.vy = deadzone_normalized_state_first[7];
-        sharedFilteredData.vz = deadzone_normalized_state_first[8];
-        sharedFilteredData.vrx = deadzone_normalized_state_first[9];
-        sharedFilteredData.vry = deadzone_normalized_state_first[10];
-        sharedFilteredData.vrz = deadzone_normalized_state_first[11];
-        sharedFilteredData.dt = 0.0f;
-
-        __dmb();
-        filtered_mailbox_seq = filtered_seq0 + 2u;
+        CoreMailbox::publishFiltered(deadzone_normalized_state_first, 0.0f);
         return;
     }
 
@@ -546,7 +457,7 @@ void loop1()
 
     float local_raw[9];
     for (int i = 0; i < 9; ++i) {
-        local_raw[i] = local_sample.rawData[i];
+        local_raw[i] = local_sample.values[i];
     }
 
     // Step the Kalman Filter math engine forward
@@ -572,27 +483,7 @@ void loop1()
     Normalization::apply_normalization_deadzone_isolation(estimated_state, deadzone_normalized_state);
     PERFORMANCE_END(1, PerformanceProfiler::Section::CORE1_NORMALIZATION);
 
-    // Publish processed state mailbox for Core 0.
-    const uint32_t filtered_seq0 = filtered_mailbox_seq;
-    filtered_mailbox_seq = filtered_seq0 + 1u; // mark write-in-progress
-    __dmb();
-
-    sharedFilteredData.x = deadzone_normalized_state[0];
-    sharedFilteredData.y = deadzone_normalized_state[1];
-    sharedFilteredData.z = deadzone_normalized_state[2];
-    sharedFilteredData.rx = deadzone_normalized_state[3];
-    sharedFilteredData.ry = deadzone_normalized_state[4];
-    sharedFilteredData.rz = deadzone_normalized_state[5];
-    sharedFilteredData.vx = deadzone_normalized_state[6];
-    sharedFilteredData.vy = deadzone_normalized_state[7];
-    sharedFilteredData.vz = deadzone_normalized_state[8];
-    sharedFilteredData.vrx = deadzone_normalized_state[9];
-    sharedFilteredData.vry = deadzone_normalized_state[10];
-    sharedFilteredData.vrz = deadzone_normalized_state[11];
-    sharedFilteredData.dt = dt;
-
-    __dmb();
-    filtered_mailbox_seq = filtered_seq0 + 2u; // mark stable payload
+    CoreMailbox::publishFiltered(deadzone_normalized_state, dt);
 
     PERFORMANCE_END(1, PerformanceProfiler::Section::CORE1_TOTAL);
 
