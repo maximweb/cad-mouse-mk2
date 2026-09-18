@@ -8,8 +8,8 @@ namespace {
 
       HID_COLLECTION(HID_COLLECTION_PHYSICAL),           // COLLECTION (Physical)
       HID_REPORT_ID(0x01)                                // REPORT_ID (1)
-      HID_LOGICAL_MIN_N(0xFEA2, 2),                      // LOGICAL_MINIMUM (-350)
-      HID_LOGICAL_MAX_N(0x015E, 2),                      // LOGICAL_MAXIMUM (350)
+      HID_LOGICAL_MIN_N(-AXIS_LIMIT, 2),                 // LOGICAL_MINIMUM
+      HID_LOGICAL_MAX_N(AXIS_LIMIT, 2),                  // LOGICAL_MAXIMUM
       HID_USAGE(HID_USAGE_DESKTOP_X),                    // USAGE (X)
       HID_USAGE(HID_USAGE_DESKTOP_Y),                    // USAGE (Y)
       HID_USAGE(HID_USAGE_DESKTOP_Z),                    // USAGE (Z)
@@ -138,12 +138,12 @@ HIDController::ReportAxes HIDController::makeReportAxes(float filtered_state[12]
     // y-axis points towards the user
     // z-axis points downwards
     ReportAxes report_axes;
-    report_axes.x = static_cast<int16_t>(filtered_state[0] * 350.0f);
-    report_axes.y = static_cast<int16_t>(filtered_state[1] * -350.0f);
-    report_axes.z = static_cast<int16_t>(filtered_state[2] * -350.0f);
-    report_axes.rx = static_cast<int16_t>(filtered_state[3] * 350.0f);
-    report_axes.ry = static_cast<int16_t>(filtered_state[4] * -350.0f);
-    report_axes.rz = static_cast<int16_t>(filtered_state[5] * -350.0f);
+    report_axes.x = static_cast<int16_t>(filtered_state[0] * AXIS_LIMIT);
+    report_axes.y = static_cast<int16_t>(filtered_state[1] * -AXIS_LIMIT);
+    report_axes.z = static_cast<int16_t>(filtered_state[2] * -AXIS_LIMIT);
+    report_axes.rx = static_cast<int16_t>(filtered_state[3] * AXIS_LIMIT);
+    report_axes.ry = static_cast<int16_t>(filtered_state[4] * -AXIS_LIMIT);
+    report_axes.rz = static_cast<int16_t>(filtered_state[5] * -AXIS_LIMIT);
     return report_axes;
 }
 
