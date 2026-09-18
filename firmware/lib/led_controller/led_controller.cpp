@@ -307,9 +307,12 @@ void LEDController::update_input(float input_x, float input_y, float input_z, fl
     }
 
     // Vertical (Z-axis) input evenly scales brightness across every LED:
-    // pulling the knob up brightens the whole ring (up to 2x), pressing it
-    // down dims it (down to fully off), independent of the X/Y glow above.
-    const float z_brightness_scale = 1.0f + clamp_signed_unit(input_z);
+        // pulling the knob up brightens the whole ring (up to 2x), pressing it
+        // down dims it to the configured minimum, independent of the X/Y glow above.
+        const float min_brightness_scale = static_cast<float>(LED_INPUT_GLOW_MIN_BRIGHTNESS) / LED_BRIGHTNESS;
+        const float z_brightness_scale = input_z < 0.0f
+            ? 1.0f + clamp_signed_unit(input_z) * (1.0f - min_brightness_scale)
+            : 1.0f + clamp_signed_unit(input_z);
 
     // Rotational (RZ-axis) input progressively lights a 4-LED arc on one side
     // of the ring to indicate spin direction. Positive input_rz is treated as
@@ -346,14 +349,13 @@ void LEDController::update_input(float input_x, float input_y, float input_z, fl
 
         uint8_t brightness = lerp_channel(LED_BRIGHTNESS, LED_INPUT_GLOW_MAX_BRIGHTNESS, influence);
         const float z_scaled_brightness = brightness * z_brightness_scale;
-        brightness = static_cast<uint8_t>(z_scaled_brightness > (float)LED_INPUT_GLOW_MAX_BRIGHTNESS ? (float)LED_INPUT_GLOW_MAX_BRIGHTNESS : (z_scaled_brightness < 0.0f ? 0.0f : z_scaled_brightness));
+        brightness = static_cast<uint8_t>(z_scaled_brightness > (float)LED_INPUT_GLOW_MAX_BRIGHTNESS ? (float)LED_INPUT_GLOW_MAX_BRIGHTNESS : (z_scaled_brightness < (float)LED_INPUT_GLOW_MIN_BRIGHTNESS ? (float)LED_INPUT_GLOW_MIN_BRIGHTNESS : z_scaled_brightness));
 
-        // Pulling up (positive Z) additionally skews color toward the glow
-        // color, on top of whatever the X/Y/RZ effects already contribute.
-        // Pressing down causes no color change, only the dimming above.
+        // Z-axis input additionally skews color toward the glow color, on top
+        // of whatever the X/Y/RZ effects already contribute.
         float color_influence = influence;
-        if (input_z > 0.0f) {
-            const float z_color_influence = clamp_unit(input_z);
+        if (input_z != 0.0f) {
+            const float z_color_influence = clamp_unit(fabsf(input_z));
             if (z_color_influence > color_influence) {
                 color_influence = z_color_influence;
             }
