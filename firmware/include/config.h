@@ -98,9 +98,9 @@
 
 #define ISOLATION_POWER 3.0f // Power for curved isolation (3.0f -> cubic isolation); while being a float, only 1, 2, 3, and 0.5 are optimized for RP2350 hardware. Other values will be slow.
 
-// Defines HID report logical min/max value
+// Defines HID report logical min/max value.
 // 350 is a reasonable starting point; increasing this number increases maximum on-screen velocity
-#define AXIS_LIMIT 350
+#define AXIS_LIMIT 350 // Maximum 32767 because HID axis values are signed 16-bit integers
 
 
 // Calibration
