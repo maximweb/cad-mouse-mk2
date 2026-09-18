@@ -20,7 +20,9 @@
 #define LED_RUNNING_WITHOUT_CALIBRATION_COLOR 0xFF6600 // Orange
 #define LED_USE_INPUT_GLOW_EFFECT true                 // Set false to disable LED input glow effect
 #define LED_INPUT_GLOW_COLOR 0x00FFFF                  // Cyan
-#define LED_INPUT_GLOW_MAX_BRIGHTNESS 255
+#define LED_INPUT_GLOW_MAX_BRIGHTNESS 255              // 0 to 255
+#define LED_FADE_OFF_DURATION_MS 2000                  // Time it takes to fade LEDs off before sleep
+#define LED_FADE_ON_DURATION_MS 1000                   // Time it takes to fade LEDs on after wake
 
 // State Machine
 #define BOOT_DELAY_MS 1000

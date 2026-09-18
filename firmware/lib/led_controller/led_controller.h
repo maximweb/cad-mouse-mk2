@@ -61,7 +61,7 @@ public:
     void fade_on(uint32_t hex_color, uint32_t duration_ms);
     void fade_off(uint32_t duration_ms);
     // Inputs are normalized knob translation/tilt values in the range [-1, 1].
-    void update(float input_x = 0.0f, float input_y = 0.0f, float input_rx = 0.0f, float input_ry = 0.0f);
+    void update(float input_x = 0.0f, float input_y = 0.0f, float input_z = 0.0f, float input_rx = 0.0f, float input_ry = 0.0f, float input_rz = 0.0f);
 
     /*
         PERMANENT ANIMATION FUNCTIONS
@@ -133,7 +133,7 @@ private:
 
     // Individual mode functions
     void update_solid();
-    void update_input(float direction_x, float direction_y);
+    void update_input(float direction_x, float direction_y, float direction_z, float direction_rz);
     void update_blinking();
     void update_pulse();
     uint8_t first_spinner_LED(bool clockwise);

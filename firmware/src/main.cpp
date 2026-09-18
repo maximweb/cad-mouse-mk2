@@ -443,8 +443,10 @@ void loop()
     ledController.update(
       latest_estimated_state[0],
       latest_estimated_state[1],
+      latest_estimated_state[2],
       latest_estimated_state[3],
-      latest_estimated_state[4]);
+      latest_estimated_state[4],
+      latest_estimated_state[5]);
 
 #if defined(ENABLE_PERFORMANCE_PROFILING) && (PERFORMANCE_PROFILING_LEVEL >= 2)
     PerformanceProfiler::print_if_due(0, now, PERFORMANCE_PRINT_INTERVAL_MS);

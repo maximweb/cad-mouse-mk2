@@ -148,7 +148,7 @@ void StateMachine::enter_RUNNING()
     const State old_state = m_state;
     if (change_state(State::RUNNING)) {
         if (old_state == State::RUNNING_NO_LED) {
-            m_led_controller.fade_on(LED_RUNNING_COLOR, 1000);
+            m_led_controller.fade_on(LED_RUNNING_COLOR, LED_FADE_ON_DURATION_MS);
         }
         else {
             m_led_controller.set_solid(LED_RUNNING_COLOR); // Solid LEDs
@@ -174,7 +174,7 @@ void StateMachine::enter_RUNNING_NO_LED()
     const State old_state = m_state;
     if (change_state(State::RUNNING_NO_LED)) {
         if (old_state == State::RUNNING) {
-            m_led_controller.fade_off(2000);
+            m_led_controller.fade_off(LED_FADE_OFF_DURATION_MS);
         }
         else {
             m_led_controller.off(); // Turn off LED

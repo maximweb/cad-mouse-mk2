@@ -39,6 +39,17 @@ namespace {
         return value;
     }
 
+    float clamp_signed_unit(float value)
+    {
+        if (value < -1.0f) {
+            return -1.0f;
+        }
+        if (value > 1.0f) {
+            return 1.0f;
+        }
+        return value;
+    }
+
     uint8_t lerp_channel(uint8_t from, uint8_t to, float amount)
     {
         return static_cast<uint8_t>(from + (to - from) * amount + 0.5f);
@@ -257,8 +268,15 @@ void LEDController::update_solid()
     m_leds.show();
 }
 
-void LEDController::update_input(float input_x, float input_y)
+void LEDController::update_input(float input_x, float input_y, float input_z, float input_rz)
 {
+    // Rate limit these non-critical calculations and LED updates to ~60Hz
+    uint32_t now = millis();
+    if (now - m_last_update_time_ms < 16) {
+        return;
+    }
+    m_last_update_time_ms = now;
+
     const float magnitude = clamp_unit(sqrtf(input_x * input_x + input_y * input_y));
 
     uint8_t running_r, running_g, running_b;
@@ -288,6 +306,24 @@ void LEDController::update_input(float input_x, float input_y)
         }
     }
 
+    // Vertical (Z-axis) input evenly scales brightness across every LED:
+    // pulling the knob up brightens the whole ring (up to 2x), pressing it
+    // down dims it (down to fully off), independent of the X/Y glow above.
+    const float z_brightness_scale = 1.0f + clamp_signed_unit(input_z);
+
+    // Rotational (RZ-axis) input progressively lights a 4-LED arc on one side
+    // of the ring to indicate spin direction. Positive input_rz is treated as
+    // counter-clockwise: D5 lights first, then D6, D7, D8 as the input
+    // strengthens. Negative input_rz is clockwise: D4 lights first, then D3,
+    // D2, D1.
+    // The dipole model uses this axis convention; HID separately flips the Z
+    // and rotation signs for the driver convention.
+    static constexpr uint8_t RZ_CW_LEDS[4] = {3, 2, 1, 0};  // D4, D3, D2, D1
+    static constexpr uint8_t RZ_CCW_LEDS[4] = {4, 5, 6, 7}; // D5, D6, D7, D8
+    const bool rz_clockwise = input_rz < 0.0f;
+    const uint8_t* rz_leds = rz_clockwise ? RZ_CW_LEDS : RZ_CCW_LEDS;
+    const float rz_fill = clamp_unit(fabsf(input_rz)) * 4.0f;
+
     for (uint8_t i = 0; i < m_leds.numPixels(); ++i) {
         float influence = 0.0f;
         if (magnitude > 0.0f && i < 8) {
@@ -295,10 +331,37 @@ void LEDController::update_input(float input_x, float input_y)
             influence = clamp_unit(magnitude * projection / strongest_projection);
         }
 
-        const uint8_t brightness = lerp_channel(LED_BRIGHTNESS, LED_INPUT_GLOW_MAX_BRIGHTNESS, influence);
-        const uint8_t r = lerp_channel(running_r, input_r, influence);
-        const uint8_t g = lerp_channel(running_g, input_g, influence);
-        const uint8_t b = lerp_channel(running_b, input_b, influence);
+        // Fold in the rotation indicator: whichever effect wants this LED
+        // brighter wins, so a translation glow and a rotation glow never
+        // fight each other on a shared LED.
+        for (uint8_t idx = 0; idx < 4; ++idx) {
+            if (rz_leds[idx] == i) {
+                const float rz_influence = clamp_unit(rz_fill - idx);
+                if (rz_influence > influence) {
+                    influence = rz_influence;
+                }
+                break;
+            }
+        }
+
+        uint8_t brightness = lerp_channel(LED_BRIGHTNESS, LED_INPUT_GLOW_MAX_BRIGHTNESS, influence);
+        const float z_scaled_brightness = brightness * z_brightness_scale;
+        brightness = static_cast<uint8_t>(z_scaled_brightness > (float)LED_INPUT_GLOW_MAX_BRIGHTNESS ? (float)LED_INPUT_GLOW_MAX_BRIGHTNESS : (z_scaled_brightness < 0.0f ? 0.0f : z_scaled_brightness));
+
+        // Pulling up (positive Z) additionally skews color toward the glow
+        // color, on top of whatever the X/Y/RZ effects already contribute.
+        // Pressing down causes no color change, only the dimming above.
+        float color_influence = influence;
+        if (input_z > 0.0f) {
+            const float z_color_influence = clamp_unit(input_z);
+            if (z_color_influence > color_influence) {
+                color_influence = z_color_influence;
+            }
+        }
+
+        const uint8_t r = lerp_channel(running_r, input_r, color_influence);
+        const uint8_t g = lerp_channel(running_g, input_g, color_influence);
+        const uint8_t b = lerp_channel(running_b, input_b, color_influence);
 
         m_leds.setPixelColor(i, m_leds.Color(
                                   apply_brightness(r, brightness),
@@ -713,7 +776,7 @@ bool LEDController::queue_blinking_animation(uint32_t hex_color, uint32_t on_dur
     UPDATE FUNCTION
 */
 
-void LEDController::update(float input_x, float input_y, float input_rx, float input_ry)
+void LEDController::update(float input_x, float input_y, float input_z, float input_rx, float input_ry, float input_rz)
 {
     if (m_fade_active) {
         update_fade();
@@ -737,7 +800,7 @@ void LEDController::update(float input_x, float input_y, float input_rx, float i
     if (LED_USE_INPUT_GLOW_EFFECT && !m_animation_running && m_current_state.mode == Mode::SOLID && m_current_state.color == LED_RUNNING_COLOR) {
         // A rightward translation (+X) and a rightward tilt (+RY) point to the
         // same LEDs. Likewise, a forward/up-ring tilt is represented by -RX.
-        update_input(input_x + input_ry, input_y - input_rx);
+        update_input(input_x + input_ry, input_y - input_rx, input_z, input_rz);
     }
     else if (m_current_state.mode == Mode::SOLID) {
         update_solid();
