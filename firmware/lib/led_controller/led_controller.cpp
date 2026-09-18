@@ -313,10 +313,12 @@ void LEDController::update_input(float input_x, float input_y, float input_z, fl
 
     // Rotational (RZ-axis) input progressively lights a 4-LED arc on one side
     // of the ring to indicate spin direction. Positive input_rz is treated as
-    // clockwise: D4 lights first, then D3, D2, D1 as the input strengthens.
-    // Negative input_rz is counter-clockwise: D5 lights first, then D6, D7,
-    // D8.
-    static constexpr uint8_t RZ_CW_LEDS[4]  = {3, 2, 1, 0}; // D4, D3, D2, D1
+    // counter-clockwise: D5 lights first, then D6, D7, D8 as the input
+    // strengthens. Negative input_rz is clockwise: D4 lights first, then D3,
+    // D2, D1.
+    // The dipole model uses this axis convention; HID separately flips the Z
+    // and rotation signs for the driver convention.
+    static constexpr uint8_t RZ_CW_LEDS[4] = {3, 2, 1, 0};  // D4, D3, D2, D1
     static constexpr uint8_t RZ_CCW_LEDS[4] = {4, 5, 6, 7}; // D5, D6, D7, D8
     const bool rz_clockwise = input_rz < 0.0f;
     const uint8_t* rz_leds = rz_clockwise ? RZ_CW_LEDS : RZ_CCW_LEDS;
