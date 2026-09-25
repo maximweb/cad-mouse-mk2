@@ -1,15 +1,26 @@
-// Pins as defined in the original project
+// =============================================================================
+// HARDWARE
+// Set once for the physical board and wiring. These values normally stay fixed.
+// =============================================================================
+
+// Button and LED pins
 #define PIN_RIGHT_BTN D0
 #define PIN_LEFT_BTN D2
 #define PIN_LED_DATA D3
 #define PIN_LED_LS D1
+
+// Hall sensor power pins
 #define PIN_MAG1_LS D10
 #define PIN_MAG2_LS D9
 #define PIN_MAG3_LS D8
 
-// RGB LEDs
+// =============================================================================
+// VISUALS
+// LED colors, brightness, input glow, and power-transition effects.
+// =============================================================================
+
 #define LED_COUNT 8
-#define LED_BRIGHTNESS 40                              // 0 to 255
+#define LED_BRIGHTNESS 40                              // 0..255; base brightness for permanent LED effects
 #define LED_BOOT_COLOR 0xFFFF00                        // Yellow
 #define LED_ERROR_COLOR 0xFF0000                       // Red
 #define LED_SUCCESS_COLOR 0x00FF00                     // Green
@@ -18,58 +29,102 @@
 #define LED_CALIBRATION_FAILURE_COLOR 0xFF00FF         // Magenta
 #define LED_RUNNING_COLOR 0xFFFFFF                     // White
 #define LED_RUNNING_WITHOUT_CALIBRATION_COLOR 0xFF6600 // Orange
-#define LED_USE_INPUT_GLOW_EFFECT true                 // Set false to disable LED input glow effect
-#define LED_INPUT_GLOW_COLOR 0x00FFFF                  // Cyan
-#define LED_INPUT_GLOW_MIN_BRIGHTNESS 10               // 0 to 255
-#define LED_INPUT_GLOW_MAX_BRIGHTNESS 255              // 0 to 255
-#define LED_FADE_OFF_DURATION_MS 2000                  // Time it takes to fade LEDs off before sleep
-#define LED_FADE_ON_DURATION_MS 1000                   // Time it takes to fade LEDs on after wake
 
-// State Machine
-#define BOOT_DELAY_MS 1000
-#define SENSOR_RECONNECT_DELAY_MS 1000
-#define CALIBRATION_SAMPLE_COUNT 100
-#define CALIBRATION_SAMPLE_DELAY_MS 20
-#define CALIBRATION_SAMPLE_TIMEOUT_MS (CALIBRATION_SAMPLE_COUNT * CALIBRATION_SAMPLE_DELAY_MS * 5)
+// Input glow effect during normal running
+#define LED_USE_INPUT_GLOW_EFFECT true    // Set false to disable LED input glow effect
+#define LED_INPUT_GLOW_COLOR 0x00FFFF     // Cyan
+#define LED_INPUT_GLOW_MIN_BRIGHTNESS 10  // 0..255; floor for input glow, must be <= LED_BRIGHTNESS and MAX
+#define LED_INPUT_GLOW_MAX_BRIGHTNESS 255 // 0..255; peak input-glow brightness, must be >= LED_BRIGHTNESS and MIN
 
-#ifdef BOARD_RP2350
-#define RUNNING_STATE_READ_ERROR_TIMEOUT_MS 50 // 50 ms timeout for filtered data reception from Core 1 on RP2350
-#else
-#ifdef BOARD_RP2040
-#define RUNNING_STATE_READ_ERROR_TIMEOUT_MS 100 // 100 ms timeout for filtered data reception from Core 1 on RP2040
-#else
-#define RUNNING_STATE_READ_ERROR_TIMEOUT_MS 200 // 200 ms timeout for filtered data reception from Core 1 on unknown boards
-#endif
-#endif
+// Power-transition effects
+#define LED_FADE_OFF_DURATION_MS 2000 // Time it takes to fade LEDs off before sleep
+#define LED_FADE_ON_DURATION_MS 1000  // Time it takes to fade LEDs on after wake
 
+// =============================================================================
+// RUNTIME AND POWER MANAGEMENT
+// State transitions, inactivity, and low-power behavior.
+// =============================================================================
+
+#define BOOT_DELAY_MS 1000                        // Delay before the initial sensor check
+#define SENSOR_RECONNECT_DELAY_MS 1000            // Delay before retrying a failed sensor connection
 #define RUNNING_STATE_INACTIVITY_TIMEOUT_MS 60000 // 60 seconds until LEDs turned off due to inactivity
 
-// SLEEP power-saving behavior
 #define SLEEP_SAMPLE_INTERVAL_MS 100      // Poll sensors and buttons at 10 Hz while waiting for motion
-#define SLEEP_WAKE_THRESHOLD 5.0f         // Per-axis field change required to resume normal processing
-#define SLEEP_BASELINE_ALPHA 0.02f        // Slowly follow sensor drift while the device remains idle
-#define SLEEP_WAKE_GRACE_MS 1000          // Prevent immediate re-entry while the first active report is produced
-#define SLEEP_SENSOR_ERROR_TIMEOUT_MS 500 // Allow for the lower sensor update rate before declaring an error
+#define SLEEP_WAKE_THRESHOLD 5.0f         // > 0; per-axis field change required to resume normal processing
+#define SLEEP_BASELINE_ALPHA 0.02f        // 0..1; baseline adaptation rate while idle
+#define SLEEP_WAKE_GRACE_MS 1000          // Grace period preventing immediate sleep after wake
+#define SLEEP_SENSOR_ERROR_TIMEOUT_MS 500 // Timeout adapted to the lower sensor update rate
 
-// Button Controller
-#define BUTTON_COMBO_WINDOW_MS 500 // Time window to detect combined long press of both buttons
+// Board-specific timeout for filtered data reception from Core 1
+#ifdef BOARD_RP2350
+#define RUNNING_STATE_READ_ERROR_TIMEOUT_MS 50
+#else
+#ifdef BOARD_RP2040
+#define RUNNING_STATE_READ_ERROR_TIMEOUT_MS 100
+#else
+#define RUNNING_STATE_READ_ERROR_TIMEOUT_MS 200
+#endif
+#endif
 
-// Dipole Model
-#define DIPOLE_MODEL_MAGNETIC_MOMENT_DEFAULT 0.18f // Default magnetic moment for each of the three magnets in A*m^2
+// =============================================================================
+// INPUT
+// =============================================================================
 
-// Extended Kalman Filter
-#define EKF_PROCESS_NOISE_STD 1.0f // Standard deviation for process noise
-#define EKF_SENSOR_NOISE_STD 5.0f  // Standard deviation for sensor noise
+#define BUTTON_COMBO_WINDOW_MS 500 // Time window for recognizing a combined long press
 
-// Jacobian strategy
-// Jacobian is fully recomputed every update step.
+// =============================================================================
+// CALIBRATION
+// Sample collection, acceptance criteria, and fit bounds.
+// =============================================================================
 
-// Jacobian computation mode
+#define CALIBRATION_SAMPLE_COUNT 100                                                               // 10..255; samples collected for calibration
+#define CALIBRATION_SAMPLE_DELAY_MS 20                                                             // > 0; interval between collected samples
+#define CALIBRATION_SAMPLE_TIMEOUT_MS (CALIBRATION_SAMPLE_COUNT * CALIBRATION_SAMPLE_DELAY_MS * 5) // 5x nominal collection time
+#define CALIBRATION_DATA_STD_THRESHOLD 0.5f                                                        // >= 0; maximum accepted standard deviation for stable samples
+
+// Fit bounds constrain the calibration optimizer to physically plausible values.
+// Magnetic moments use one symmetric magnitude bound, while assembly offsets
+// use separate lower and upper bounds for each translation and rotation axis.
+#define CALIBRATION_FIT_MOMENT_BOUNDS 0.5f // > 0; symmetric +/- fit bound in A/m^2
+#define CALIBRATION_FIT_MOMENT_MIN 0.05f   // >= 0 and <= BOUNDS; minimum accepted magnitude in A/m^2
+
+#define CALIBRATION_FIT_X_MIN -1.0f  // mm; must be <= X_MAX
+#define CALIBRATION_FIT_X_MAX 1.0f   // mm; must be >= X_MIN
+#define CALIBRATION_FIT_Y_MIN -1.0f  // mm; must be <= Y_MAX
+#define CALIBRATION_FIT_Y_MAX 1.0f   // mm; must be >= Y_MIN
+#define CALIBRATION_FIT_Z_MIN -1.0f  // mm; must be <= Z_MAX
+#define CALIBRATION_FIT_Z_MAX 1.0f   // mm; must be >= Z_MIN
+#define CALIBRATION_FIT_RX_MIN -1.0f // degrees; must be <= RX_MAX
+#define CALIBRATION_FIT_RX_MAX 1.0f  // degrees; must be >= RX_MIN
+#define CALIBRATION_FIT_RY_MIN -1.0f // degrees; must be <= RY_MAX
+#define CALIBRATION_FIT_RY_MAX 1.0f  // degrees; must be >= RY_MIN
+#define CALIBRATION_FIT_RZ_MIN -1.0f // degrees; must be <= RZ_MAX
+#define CALIBRATION_FIT_RZ_MAX 1.0f  // degrees; must be >= RZ_MIN
+
+// =============================================================================
+// DIPOLE MODEL
+// =============================================================================
+
+// Initial magnetic moment for each magnet. Also used as the calibration start
+// value when no stored calibration is available.
+#define DIPOLE_MODEL_MAGNETIC_MOMENT_DEFAULT 0.18f // A*m^2
+
+// =============================================================================
+// EXTENDED KALMAN FILTER
+// =============================================================================
+
+#define EKF_PROCESS_NOISE_STD 1.0f // > 0; process noise standard deviation; higher = more responsive/noisy
+#define EKF_SENSOR_NOISE_STD 5.0f  // > 0; sensor noise standard deviation; higher = smoother/less sensor trust
+
+// Jacobian strategy: fully recomputed every update step.
 // 0: Fully numeric finite differences
 // 1: Hybrid (analytic translation dB/dx,dB/dy,dB/dz + numeric rotation dB/drx,dB/dry,dB/drz)
 #define EKF_JACOBIAN_MODE 1
 
-// Normalization, Deadzone, and Isolation
+// =============================================================================
+// POSTPROCESSING
+// Normalization, deadzones, and 6DoF dominant-axis isolation.
+// =============================================================================
 //
 // Physics model assumes (USB port facing away from user):
 // - x: right(+ / MAX), left(- / MIN)
@@ -79,59 +134,36 @@
 // - ry: pitch right(+ / MAX), pitch left(- / MIN)
 // - rz: yaw left(+ / MAX), yaw right(- / MIN)
 //
-// Yet for driver support some axes are flipped in HID report (y and z). This only affects the sign of the output,
-// but the MIN/MAX stay the same. The following describes the mapping from normalized state to HID report axes:
-// - x axis: right(+ / MAX), left(- / MIN) (no change)
-// - y axis: forward(- / MAX), backward(+ / MIN) (signs flipped)
-// - z axis: up(- / MAX), down(+ / MIN) (flipped)
-// - rx axis: roll backward(+ / MAX), roll forward(- / MIN) (no change)
-// - ry axis: pitch right(- / MAX), pitch left(+ / MIN) (signs flipped)
-// - rz axis: yaw left(- / MAX), yaw right(+ / MIN) (signs flipped)
-//
-// To make one direction more sensitive than the other, decrease the corresponding MIN or MAX value.
-// For example, to make upward movement more sensitive, decrease NORMALIZATION_Z_MAX.
-#define NORMALIZATION_X_MAX 1.7f  // Maximum translation in positive x shift mm for normalization
-#define NORMALIZATION_X_MIN 1.7f  // Maximum translation in negative x shift mm for normalization
-#define NORMALIZATION_Y_MAX 1.7f  // Maximum translation in positive y shift mm for normalization
-#define NORMALIZATION_Y_MIN 1.7f  // Maximum translation in negative y shift mm for normalization
-#define NORMALIZATION_Z_MAX 1.0f  // Maximum translation in positive z shift mm for normalization (make upward more sensitive)
-#define NORMALIZATION_Z_MIN 1.5f  // Maximum translation in negative z shift mm for normalization
-#define NORMALIZATION_RX_MAX 6.5f // Maximum rotation in positive rx shift degrees for normalization
-#define NORMALIZATION_RX_MIN 6.5f // Maximum rotation in negative rx shift degrees for normalization
-#define NORMALIZATION_RY_MAX 6.5f // Maximum rotation in positive ry shift degrees for normalization
-#define NORMALIZATION_RY_MIN 6.5f // Maximum rotation in negative ry shift degrees for normalization
-#define NORMALIZATION_RZ_MAX 5.5f // Maximum rotation in positive rz shift degrees for normalization
-#define NORMALIZATION_RZ_MIN 5.5f // Maximum rotation in negative rz shift degrees for normalization
+// HID report mapping flips y, z, ry, and rz signs for driver support. The
+// normalization limits below keep the physical MIN/MAX direction convention.
+// To tune asymmetric movement, decrease the corresponding positive MAX or
+// negative MIN value. For example, decreasing NORMALIZATION_Z_MAX makes upward
+// movement more sensitive.
+#define NORMALIZATION_X_MAX 1.7f  // Positive x movement for normalized +1, in mm
+#define NORMALIZATION_X_MIN 1.7f  // Magnitude of negative x movement for normalized -1, in mm
+#define NORMALIZATION_Y_MAX 1.7f  // Positive y movement for normalized +1, in mm
+#define NORMALIZATION_Y_MIN 1.7f  // Magnitude of negative y movement for normalized -1, in mm
+#define NORMALIZATION_Z_MAX 1.0f  // Positive z movement for normalized +1, in mm; lower for more sensitivity
+#define NORMALIZATION_Z_MIN 1.5f  // Magnitude of negative z movement for normalized -1, in mm
+#define NORMALIZATION_RX_MAX 6.5f // Positive rx rotation for normalized +1, in degrees
+#define NORMALIZATION_RX_MIN 6.5f // Magnitude of negative rx rotation for normalized -1, in degrees
+#define NORMALIZATION_RY_MAX 6.5f // Positive ry rotation for normalized +1, in degrees
+#define NORMALIZATION_RY_MIN 6.5f // Magnitude of negative ry rotation for normalized -1, in degrees
+#define NORMALIZATION_RZ_MAX 5.5f // Positive rz rotation for normalized +1, in degrees
+#define NORMALIZATION_RZ_MIN 5.5f // Magnitude of negative rz rotation for normalized -1, in degrees
 
-#define DEADZONE_TRANSLATION_THRESHOLD 0.05f // Deadzone threshold for translation in normalized units (5%)
-#define DEADZONE_ROTATION_THRESHOLD 0.05f    // Deadzone threshold for rotation in normalized units (5%)
+#define DEADZONE_TRANSLATION_THRESHOLD 0.05f // Normalized x/y/z magnitude; 0.05 = 5% deadzone
+#define DEADZONE_ROTATION_THRESHOLD 0.05f    // Normalized rx/ry/rz magnitude; 0.05 = 5% deadzone
+#define ISOLATION_POWER 3.0f                 // > 0; 1=no curve, 3=cubic; 1, 2, 3, 0.5 optimized
 
-#define ISOLATION_POWER 3.0f // Power for curved isolation (3.0f -> cubic isolation); while being a float, only 1, 2, 3, and 0.5 are optimized for RP2350 hardware. Other values will be slow.
+// =============================================================================
+// HID OUTPUT
+// =============================================================================
 
-// Defines HID report logical min/max value.
-// 350 is a reasonable starting point; increasing this number increases maximum on-screen velocity
-#define AXIS_LIMIT 350 // Maximum 32767 because HID axis values are signed 16-bit integers
+// Positive HID logical limit; the report range is [-AXIS_LIMIT, +AXIS_LIMIT].
+// Must stay within the signed 16-bit range; no runtime clamp is applied.
+#define AXIS_LIMIT 350 // 1..32767; higher values increase maximum on-screen velocity
 
-// Calibration
-#define CALIBRATION_DATA_STD_THRESHOLD 0.5f // Standard deviation threshold to accept collected raw data samples for calibration
-
-#define CALIBRATION_FIT_MOMENT_BOUNDS 0.5f // bounds for magnetic moment fitting in A/m^2
-#define CALIBRATION_FIT_MOMENT_MIN 0.05f   // minimum magnetic moment to accept in A/m^2
-
-#define CALIBRATION_FIT_X_MIN -1.0f  // lower bound for x offset fitting in mm
-#define CALIBRATION_FIT_X_MAX 1.0f   // upper bound for x offset fitting in mm
-#define CALIBRATION_FIT_Y_MIN -1.0f  // lower bound for y offset fitting in mm
-#define CALIBRATION_FIT_Y_MAX 1.0f   // upper bound for y offset fitting in mm
-#define CALIBRATION_FIT_Z_MIN -1.0f  // lower bound for z offset fitting in mm
-#define CALIBRATION_FIT_Z_MAX 1.0f   // upper bound for z offset fitting in mm
-#define CALIBRATION_FIT_RX_MIN -1.0f // lower bound for rx offset fitting in degrees
-#define CALIBRATION_FIT_RX_MAX 1.0f  // upper bound for rx offset fitting in degrees
-#define CALIBRATION_FIT_RY_MIN -1.0f // lower bound for ry offset fitting in degrees
-#define CALIBRATION_FIT_RY_MAX 1.0f  // upper bound for ry offset fitting in degrees
-#define CALIBRATION_FIT_RZ_MIN -1.0f // lower bound for rz offset fitting in degrees
-#define CALIBRATION_FIT_RZ_MAX 1.0f  // upper bound for rz offset fitting in degrees
-
-// HID
 #ifdef BOARD_RP2350
 #define HID_REPORT_INTERVAL_MS 4 // 4 ms interval for sending HID reports (250 Hz) current Core 1 roundtrip time is ~2ms
 #else
@@ -142,12 +174,12 @@
 #endif
 #endif
 
-// Debugging via Serial
-// Profiling levels:
-// 0 = off (no profiling overhead in hot paths)
-// 1 = lightweight throughput telemetry only (new filtered values cadence)
-// 2 = detailed section profiling (full PerformanceProfiler as before)
-#define PERFORMANCE_PROFILING_LEVEL 0
+// =============================================================================
+// DEBUGGING AND PROFILING
+// =============================================================================
+
+// Profiling levels: 0 = off, 1 = lightweight throughput telemetry, 2 = detailed sections.
+#define PERFORMANCE_PROFILING_LEVEL 0 // 0..2; values >2 behave like level 2
 
 #if PERFORMANCE_PROFILING_LEVEL > 0
 #define ENABLE_PERFORMANCE_PROFILING 1
