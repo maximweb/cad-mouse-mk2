@@ -310,8 +310,8 @@ void ExtendedKalmanFilter::update(float sensor_readings[9], DipoleModel& dipole_
 
     // --- 4. UPDATE COVARIANCE MATRIX ---
     PERFORMANCE_BEGIN(1, PerformanceProfiler::Section::EKF_COVARIANCE_UPDATE);
-    // Solve all 12 rows of K = (P*H^T)*S^{-1} together for better L reuse.
-    float K[12][9];
+    // With S = L*L^T and Y_tmp = (P*H^T)*L^{-T}, the covariance
+    // correction is Y_tmp*Y_tmp^T. This avoids the backward solve for K.
     float Y_tmp[12][9];
 
     // Forward solve: Y_tmp * L^T = P*H^T  (row-wise RHS)
@@ -326,22 +326,10 @@ void ExtendedKalmanFilter::update(float sensor_readings[9], DipoleModel& dipole_
         }
     }
 
-    // Backward solve: K * L = Y_tmp
-    for (int i = 8; i >= 0; --i) {
-        const float lii = (L[i][i] < 1e-5f) ? 1e-5f : L[i][i];
-        for (int row = 0; row < 12; ++row) {
-            float sum = 0.0f;
-            for (int k = i + 1; k < 9; ++k) {
-                sum += L[k][i] * K[row][k];
-            }
-            K[row][i] = (Y_tmp[row][i] - sum) / lii;
-        }
-    }
-
     for (int row = 0; row < 12; ++row) {
         // Update only upper triangle and mirror immediately to preserve symmetry.
         for (int col = row; col < 12; ++col) {
-            const float delta = K[row][0] * HP_full[0][col] + K[row][1] * HP_full[1][col] + K[row][2] * HP_full[2][col] + K[row][3] * HP_full[3][col] + K[row][4] * HP_full[4][col] + K[row][5] * HP_full[5][col] + K[row][6] * HP_full[6][col] + K[row][7] * HP_full[7][col] + K[row][8] * HP_full[8][col];
+            const float delta = Y_tmp[row][0] * Y_tmp[col][0] + Y_tmp[row][1] * Y_tmp[col][1] + Y_tmp[row][2] * Y_tmp[col][2] + Y_tmp[row][3] * Y_tmp[col][3] + Y_tmp[row][4] * Y_tmp[col][4] + Y_tmp[row][5] * Y_tmp[col][5] + Y_tmp[row][6] * Y_tmp[col][6] + Y_tmp[row][7] * Y_tmp[col][7] + Y_tmp[row][8] * Y_tmp[col][8];
 
             float updated = m_P[row][col] - delta;
             if (!std::isfinite(updated)) {
