@@ -39,21 +39,56 @@ void HallSensorController::begin()
     m_sensor1.setIICAddress(TLx493D_IIC_ADDR_A2_e);
     m_sensor1.setPowerMode(TLx493D_FAST_MODE_e);
     m_sensor1.setSensitivity(m_sensitivity);
-    delay(10); // Wait for the sensor to stabilize
+    m_sensor1.setMeasurement(TLx493D_BxByBz_e); // Temperature is unused; measure magnetic axes only.
 
     powerOn(m_sensor2PowerPin);
     m_sensor2.init(true, false, false, true);
     m_sensor2.setIICAddress(TLx493D_IIC_ADDR_A1_e);
     m_sensor2.setPowerMode(TLx493D_FAST_MODE_e);
     m_sensor2.setSensitivity(m_sensitivity);
-    delay(10); // Wait for the sensor to stabilize
+    m_sensor2.setMeasurement(TLx493D_BxByBz_e);
 
     powerOn(m_sensor3PowerPin);
     m_sensor3.init(true, false, false, true);
     m_sensor3.setIICAddress(TLx493D_IIC_ADDR_A0_e);
     m_sensor3.setPowerMode(TLx493D_FAST_MODE_e);
     m_sensor3.setSensitivity(m_sensitivity);
-    delay(10); // Wait for the sensor to stabilize
+    m_sensor3.setMeasurement(TLx493D_BxByBz_e);
+
+    delay(10); // Wait for all sensors to stabilize
+
+    m_in_low_power_mode = false;
+}
+
+bool HallSensorController::isInLowPowerMode()
+{
+    return m_in_low_power_mode;
+}
+
+bool HallSensorController::enterLowPowerMode()
+{
+    if (!m_in_low_power_mode) {
+        m_in_low_power_mode = setPowerMode(TLx493D_LOW_POWER_MODE_e);
+
+    }
+    return m_in_low_power_mode;
+}
+
+bool HallSensorController::enterFastMode()
+{
+    if (m_in_low_power_mode) {
+        m_in_low_power_mode = !setPowerMode(TLx493D_FAST_MODE_e);
+    }
+    return m_in_low_power_mode;
+}
+
+bool HallSensorController::setPowerMode(TLx493D_PowerModeType_t mode)
+{
+    // Attempt all three writes even if an earlier sensor fails.
+    const bool s1 = m_sensor1.setPowerMode(mode);
+    const bool s2 = m_sensor2.setPowerMode(mode);
+    const bool s3 = m_sensor3.setPowerMode(mode);
+    return s1 && s2 && s3;
 }
 
 void HallSensorController::powerOff(uint8_t pin)

@@ -87,11 +87,13 @@ public:
         */
         RUNNING_WITHOUT_CALIBRATION,
         /*
-            Normal operation state without LED visualizer.
-            Identical to RUNNING and RUNNING_WITHOUT_CALIBRATION states, but without any LED visualizer.
+            Low-power idle operation without LED visualizer.
+            - Hall sensors run in low-power mode and are sampled at a reduced rate
+            - Raw field changes restore the appropriate RUNNING state
+            - Core 1 skips EKF processing until activity resumes
             - Visualizer (permanent): Off
         */
-        RUNNING_NO_LED,
+        SLEEP,
     };
 
     StateMachine(LEDController& led_controller, DipoleModel& dipole_model);
@@ -115,7 +117,7 @@ public:
     void enter_CALIBRATE_COMPUTE();
     void enter_RUNNING();
     void enter_RUNNING_WITHOUT_CALIBRATION();
-    void enter_RUNNING_NO_LED();
+    void enter_SLEEP();
 
     // We only handle some of the state transitions here,
     // as some transitions need several global data or functions

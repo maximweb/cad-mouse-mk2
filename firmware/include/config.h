@@ -44,6 +44,13 @@
 
 #define RUNNING_STATE_INACTIVITY_TIMEOUT_MS 60000 // 60 seconds until LEDs turned off due to inactivity
 
+// SLEEP power-saving behavior
+#define SLEEP_SAMPLE_INTERVAL_MS 100      // Poll sensors and buttons at 10 Hz while waiting for motion
+#define SLEEP_WAKE_THRESHOLD 5.0f         // Per-axis field change required to resume normal processing
+#define SLEEP_BASELINE_ALPHA 0.02f        // Slowly follow sensor drift while the device remains idle
+#define SLEEP_WAKE_GRACE_MS 1000          // Prevent immediate re-entry while the first active report is produced
+#define SLEEP_SENSOR_ERROR_TIMEOUT_MS 500 // Allow for the lower sensor update rate before declaring an error
+
 // Button Controller
 #define BUTTON_COMBO_WINDOW_MS 500 // Time window to detect combined long press of both buttons
 

@@ -22,7 +22,7 @@ public:
 
     bool begin();
     void task();
-    void sendReport(float filtered_state[12], uint16_t buttons);
+    void sendReport(float filtered_state[12], uint16_t buttons, bool forceUpdate);
 
     uint32_t get_last_report_time_ms();
 

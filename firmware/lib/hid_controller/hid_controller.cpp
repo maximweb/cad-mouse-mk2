@@ -76,7 +76,7 @@ void HIDController::task()
     TinyUSBDevice.task();
 }
 
-void HIDController::sendReport(float filtered_state[12], uint16_t buttons)
+void HIDController::sendReport(float filtered_state[12], uint16_t buttons, bool forceUpdate)
 {
     // Send HID report
     task(); // Ensure TinyUSBDevice task is called to handle USB events
@@ -110,12 +110,12 @@ void HIDController::sendReport(float filtered_state[12], uint16_t buttons)
     }
 
     // Check if enough time has passed since the last axes report was sent
-    if (now - m_last_sent_time_ms < HID_REPORT_INTERVAL_MS) {
+    if (now - m_last_sent_time_ms < HID_REPORT_INTERVAL_MS && !forceUpdate) {
         return;
     }
 
     ReportAxes new_axes = makeReportAxes(filtered_state);
-    if (!axesChanged(new_axes, now)) {
+    if (!axesChanged(new_axes, now) && !forceUpdate) {
         return;
     }
 

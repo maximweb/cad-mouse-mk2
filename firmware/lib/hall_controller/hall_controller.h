@@ -33,11 +33,18 @@ public:
     void printControlRegisters();
     void printControlRegisters(uint8_t sensorID);
 
+    bool isInLowPowerMode();
+    bool enterLowPowerMode();
+    bool enterFastMode();
+
 private:
     static void powerOff(uint8_t pin);
     static void powerOn(uint8_t pin);
+    bool setPowerMode(TLx493D_PowerModeType_t mode);
 
     bool readSingleSensorRawFast(uint8_t sensorAddress, int16_t* outX, int16_t* outY, int16_t* outZ);
+
+    bool m_in_low_power_mode;
 
     TLx493D_SensitivityType_t m_sensitivity;
     float m_scaleFactor;
