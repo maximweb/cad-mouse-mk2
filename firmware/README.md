@@ -120,18 +120,50 @@ effect.
 
 ### Quick Tuning Guide
 
-Main knobs in `firmware/include/config.h`:
+The postprocessing pipeline is applied in this order:
 
-- `EKF_PROCESS_NOISE_STD`: higher = more responsive, lower = smoother
-- `EKF_SENSOR_NOISE_STD`: higher = smoother/less reactive, lower = more direct/more noisy
-- `NORMALIZATION_*_MAX`: higher = less sensitive axis, lower = more sensitive axis
-- `DEADZONE_*_THRESHOLD`: higher = less idle jitter, lower = finer micro-movements
-- `ISOLATION_POWER`: higher = stronger dominant-axis isolation
-
-For EKF tuning, set deadzone temporarily very small (recommended: `0.005` to `0.02`) so neutral jitter/spikes stay visible.
-
-Current normalization is symmetric (absolute max only, mapped to `[-1, 1]`).
-If one direction needs different scaling than the other, we may need separate `+/-` limits (for example for `Z`: push down `-Z` vs pull up `+Z` on lightweight builds without base weights).
+1. The dipole model and EKF estimate the physical pose: translation in mm and
+   rotation in radians.
+   - `EKF_PROCESS_NOISE_STD`: controls how much the estimate can respond to
+     model changes. Higher values are more responsive but noisier; lower values
+     are smoother but slower.
+   - `EKF_SENSOR_NOISE_STD`: controls how much the EKF trusts sensor readings.
+     Higher values produce smoother output; lower values follow the sensors more
+     directly.
+   - For EKF tuning, temporarily use very low thresholds in step 3 (around
+     `0.005` to `0.02`); otherwise, the deadzone may hide the residual jitter
+     being assessed.
+2. Normalization converts position and velocity values into a comparable
+   `[-1, 1]` range.
+   - `NORMALIZATION_*_MAX` / `NORMALIZATION_*_MIN`: define the physical movement
+     required to reach normalized `+1` or `-1`. Translation limits are in mm;
+     rotation limits are configured in degrees and converted to radians
+     internally. Separate positive and negative limits allow asymmetric
+     behavior to be tuned, for example when pulling the knob up requires a
+     different effort than pushing it down.
+3. Separate translation and rotation deadzones remove small residual drift.
+   - `DEADZONE_TRANSLATION_THRESHOLD`: removes small translation movement around
+     zero.
+   - `DEADZONE_ROTATION_THRESHOLD`: removes small rotation movement around zero.
+   - Both thresholds use the magnitude of their respective 3-dimensional
+     vector, so a combined translation or rotation movement is evaluated as a
+     whole rather than axis by axis.
+   - With the current value of `0.05`, magnitudes below 5% of the normalized
+     range are treated as zero, filtering residual drift and noise after EKF
+     processing.
+   - Values outside the deadzone are rescaled to preserve the full usable
+     range.
+4. 6DoF isolation emphasizes the dominant movement and suppresses unintended
+   secondary axes.
+   - `ISOLATION_POWER`: controls how strongly the dominant movement is emphasized
+     across all six degrees of freedom. Higher values make an isolated shift or
+     tilt cleaner by suppressing smaller unintended components; lower values
+     preserve more blended movement. The corresponding velocities receive the
+     same gain.
+5. The normalized values are converted into HID reports.
+   - `AXIS_LIMIT`: sets the maximum HID output value. Higher values produce
+     faster maximum on-screen motion; lower values reduce maximum speed without
+     changing the physical normalization.
 
 ### ToDo
 
