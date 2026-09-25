@@ -74,6 +74,50 @@ Calibration is done in firmware by
 
 Initial start triggers calibration and attempts to store it to LittleFS. Consecutive calibrations can be manually triggered by long press of both buttons simultaneously.
 
+### LED Color Codes
+
+All firmware LED colors use `0xRRGGBB` values from `firmware/include/config.h`.
+Permanent effects describe the current state and remain active until another
+state changes them. Queued animations are one-time event notifications and
+restore the relevant permanent effect afterwards.
+
+#### Permanent Colors and Effects
+
+| Constant                                | Hex code   | Color  | Effect                     | Meaning                              |
+| --------------------------------------- | ---------- | ------ | -------------------------- | ------------------------------------ |
+| `LED_BOOT_COLOR`                        | `0xFFFF00` | Yellow | Solid                      | Boot state                           |
+| `LED_ERROR_COLOR`                       | `0xFF0000` | Red    | Full spinner               | Sensor error                         |
+| `LED_CALIBRATION_COLOR`                 | `0x0000FF` | Blue   | Full spinner               | Calibration in progress              |
+| `LED_RUNNING_COLOR`                     | `0xFFFFFF` | White  | Solid; optional input glow | Normal running with calibration      |
+| `LED_RUNNING_WITHOUT_CALIBRATION_COLOR` | `0xFF6600` | Orange | Solid                      | Running without calibration          |
+| `LED_INPUT_GLOW_COLOR`                  | `0x00FFFF` | Cyan   | Dynamic input glow         | Input feedback during normal running |
+| internal `0x000000`                     | `0x000000` | Black  | Off                        | LEDs switched off, including sleep   |
+
+#### One-Time Queued Animations
+
+All entries below use `queue_blinking_animation` with 200 ms on and 200 ms
+off durations. The blink count is part of the event code and should remain
+unique for different events that use the same color.
+
+| Constant                        | Hex code   | Color   | Blinks | Event                                                          |
+| ------------------------------- | ---------- | ------- | -----: | -------------------------------------------------------------- |
+| `LED_SUCCESS_COLOR`             | `0x00FF00` | Green   |      1 | Sensor check succeeded                                         |
+| `LED_CALIBRATION_SUCCESS_COLOR` | `0x00FFFF` | Cyan    |      1 | Calibration file loaded successfully                           |
+| `LED_CALIBRATION_FAILURE_COLOR` | `0xFF00FF` | Magenta |      1 | Filesystem initialization failed at startup                    |
+| `LED_CALIBRATION_FAILURE_COLOR` | `0xFF00FF` | Magenta |      2 | Calibration file could not be loaded; fresh calibration starts |
+| `LED_CALIBRATION_FAILURE_COLOR` | `0xFF00FF` | Magenta |      3 | Calibration sample collection timed out                        |
+| `LED_CALIBRATION_FAILURE_COLOR` | `0xFF00FF` | Magenta |      4 | Fresh calibration succeeded, but saving failed                 |
+| `LED_CALIBRATION_FAILURE_COLOR` | `0xFF00FF` | Magenta |      5 | Fresh calibration failed; existing calibration remains active  |
+| `LED_CALIBRATION_FAILURE_COLOR` | `0xFF00FF` | Magenta |      6 | Fresh calibration failed; no calibration is available          |
+| `LED_SUCCESS_COLOR`             | `0x00FF00` | Green   |      2 | Fresh calibration succeeded and was saved                      |
+
+The blink code is unique for every event within a color. Filesystem and
+calibration-file failures intentionally use the same Magenta family because
+the filesystem is currently used exclusively for calibration persistence.
+`LED_CALIBRATION_SUCCESS_COLOR` and `LED_INPUT_GLOW_COLOR` also share
+`0x00FFFF`, but one is a queued event and the other is a permanent dynamic
+effect.
+
 ### Quick Tuning Guide
 
 Main knobs in `firmware/include/config.h`:

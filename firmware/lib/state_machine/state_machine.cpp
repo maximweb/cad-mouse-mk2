@@ -222,7 +222,7 @@ void StateMachine::handle_CALIBRATION_FROM_FILE()
     }
     else {
         // Failed to load calibration data from file, proceed to fresh calibration
-        m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 1); // blink MAGENTA one time to indicate failed calibration load
+        m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 2); // blink MAGENTA two times to indicate failed calibration load
 
         enter_CALIBRATE_COLLECT();
     }
@@ -241,7 +241,7 @@ bool StateMachine::handle_CALIBRATE_COLLECT_partial(uint32_t now)
 
     // Check for timeout, no new samples during 10 * CALIBRATION_SAMPLE_DELAY_MS
     if (now - m_last_state_change_time_ms > CALIBRATION_SAMPLE_TIMEOUT_MS) {
-        m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 2); // blink MAGENTA two times to indicate calibration collection timeout
+        m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 3); // blink MAGENTA three times to indicate calibration collection timeout
         enter_SENSOR_RECONNECT();
         return true; // Indicate that we have transitioned to the next state
     }
@@ -269,7 +269,7 @@ void StateMachine::handle_CALIBRATE_COMPUTE()
         m_dipole_model.get_offsets(new_data.offsets);
 
         if (Calibration::save_calibration_data(new_data)) {
-            m_led_controller.queue_blinking_animation(LED_SUCCESS_COLOR, 200, 200, 1); // blink GREEN one time to indicate successful calibration & save
+            m_led_controller.queue_blinking_animation(LED_SUCCESS_COLOR, 200, 200, 2); // blink GREEN two times to indicate successful calibration & save
             STATE_LOG_PRINTLN("Calibration data saved successfully.");
             m_calibration_load_state = Calibration::LoadState::CALIBRATION_SUCCESSFUL_SAVED;
             enter_RUNNING();
@@ -283,15 +283,19 @@ void StateMachine::handle_CALIBRATE_COMPUTE()
         }
     }
     else {
-        // Calibration failed, indicate failure and proceed to RUNNING_WITHOUT_CALIBRATION state
+        // Calibration failed; preserve an existing calibration when available.
         STATE_LOG_PRINTLN("Calibration failed, checking calibration load state.");
         if (get_calibration_load_state() == Calibration::LoadState::NO_FILE_USING_DEFAULTS) {
             // Never had any calibration data, so we are running without calibration
             m_calibration_load_state = Calibration::LoadState::CALIBRATION_FAILED;
+            m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 6); // blink MAGENTA six times to indicate no calibration is available
             enter_RUNNING_WITHOUT_CALIBRATION();
-        } // No change in any other case, as we have either an old calibration from file or a previous successful calibration in memory
-        m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 3); // blink MAGENTA three times to indicate calibration failure
-        enter_RUNNING();
+        }
+        else {
+            // An old calibration from file or a previous successful calibration remains active.
+            m_led_controller.queue_blinking_animation(LED_CALIBRATION_FAILURE_COLOR, 200, 200, 5); // blink MAGENTA five times to indicate fresh calibration failure
+            enter_RUNNING();
+        }
     }
 }
 
