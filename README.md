@@ -6,6 +6,18 @@ Watch the build video ↓
 
 This is the second iteration of my DIY CAD Mouse, rebuilt to behave like a real 6DoF controller. It uses a custom PCB with three magnetic sensors, a 3D printed spring, and a redesigned enclosure that is smaller and easier to build.
 
+## Firmware
+
+The firmware reads the three magnetic sensors, estimates the full
+6DoF pose with a dipole physics model and extended Kalman filter, and uses both MCU
+cores to separate sensor input from filtering. It supports persistent
+calibration data and runs on both RP2040 and RP2350 boards.
+
+See the [firmware documentation](./firmware/README.md) for implementation
+details, tuning guidance, and LED status codes.
+
+## Hardware
+
   Build instructions → [Instructables](https://www.instructables.com/CAD-Mouse-MK2-a-6DoF-Space-Mouse-Using-Magnets)
 
 <sub>⚠️ There have been several comments raising concerns about the longevity of the PETG spring. If it does not last as expected, a revision of the knob design will be needed.</sub>
