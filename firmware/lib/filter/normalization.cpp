@@ -77,8 +77,9 @@ void Normalization::apply_normalization_deadzone_isolation(float state[12], floa
       NORMALIZATION_RZ_MIN * (3.14159265f / 180.0f),
     }; // radians
 
-    // == Normalize translation and rotation values to [-1, 1] range
-    // Use same normalization for the velocities as well.
+    // == Scale translation and rotation values relative to their configured limits.
+    // Values may temporarily exceed [-1, 1]; the isolation step bounds the final pose.
+    // Use the same scaling for velocities so deadzone and isolation gains remain coupled.
     // This makes
     // - x,y,z: mm -> effort%
     // - rx,ry,rz: radians -> effort%

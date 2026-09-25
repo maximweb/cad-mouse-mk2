@@ -120,7 +120,7 @@ effect.
 
 ### Quick Tuning Guide
 
-The postprocessing pipeline is applied in this order:
+The filtering pipeline is applied in this order:
 
 1. The dipole model and EKF estimate the physical pose: translation in mm and
    rotation in radians.
@@ -133,8 +133,9 @@ The postprocessing pipeline is applied in this order:
    - For EKF tuning, temporarily use very low thresholds in step 3 (around
      `0.005` to `0.02`); otherwise, the deadzone may hide the residual jitter
      being assessed.
-2. Normalization converts position and velocity values into a comparable
-   `[-1, 1]` range.
+2. Normalization scales pose values relative to their configured limits. Values
+   may temporarily exceed `[-1, 1]`; the later isolation step 4 bounds the
+   final pose output to that range.
    - `NORMALIZATION_*_MAX` / `NORMALIZATION_*_MIN`: define the physical movement
      required to reach normalized `+1` or `-1`. Translation limits are in mm;
      rotation limits are configured in degrees and converted to radians
@@ -158,12 +159,25 @@ The postprocessing pipeline is applied in this order:
    - `ISOLATION_POWER`: controls how strongly the dominant movement is emphasized
      across all six degrees of freedom. Higher values make an isolated shift or
      tilt cleaner by suppressing smaller unintended components; lower values
-     preserve more blended movement. The corresponding velocities receive the
-     same gain.
+     preserve more blended movement.
 5. The normalized values are converted into HID reports.
    - `AXIS_LIMIT`: sets the maximum HID output value. Higher values produce
      faster maximum on-screen motion; lower values reduce maximum speed without
      changing the physical normalization.
+
+The EKF also estimates velocity components. They retain their physical units;
+for example, moving 1 mm in 1 second corresponds to 1 mm/s. During
+postprocessing, pose and velocity values use the same configured limits and
+then receive the same deadzone and isolation gains. This removes physical units
+from the pose representation while keeping velocity changes consistent with
+the corresponding pose changes.
+
+For example, with a 2 mm translation limit, 1 mm becomes `0.5` and `0.5 mm/s`
+becomes `0.25` normalized units per second.
+
+Only the six pose components are sent in the HID report. We still process
+velocities consistently because the additional cost is negligible and keeps
+future or alternative uses of the velocity data correct.
 
 ### ToDo
 
