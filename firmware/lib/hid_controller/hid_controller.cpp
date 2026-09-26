@@ -35,8 +35,35 @@ namespace {
       HID_INPUT(HID_CONSTANT | HID_ARRAY | HID_ABSOLUTE), // INPUT (Const,Array,Abs)
       HID_COLLECTION_END,                                 // END_COLLECTION
 
+      // Proprietary driver LED feedback: SET_REPORT, Report-ID 4, 1 byte (0x00 off / 0x01 on)
+      HID_COLLECTION(HID_COLLECTION_PHYSICAL),            // COLLECTION (Physical)
+      HID_REPORT_ID(0x04)                                 // REPORT_ID (4)
+      HID_USAGE_PAGE(HID_USAGE_PAGE_LED),                 // USAGE_PAGE (LED)
+      HID_USAGE(0x4B),                                    // USAGE (Generic Indicator)
+      HID_LOGICAL_MIN(0),                                 // LOGICAL_MINIMUM (0)
+      HID_LOGICAL_MAX(1),                                 // LOGICAL_MAXIMUM (1)
+      HID_REPORT_SIZE(8),                                 // REPORT_SIZE (8)
+      HID_REPORT_COUNT(1),                                // REPORT_COUNT (1)
+      HID_OUTPUT(HID_DATA | HID_VARIABLE | HID_ABSOLUTE), // OUTPUT (Data,Var,Abs)
+      HID_COLLECTION_END,                                 // END_COLLECTION
+
       HID_COLLECTION_END, // END_COLLECTION
     };
+
+    // MVP test: log whatever the host sends via SET_REPORT (see LED_FEEDBACK_HID_PLAN.md)
+    void set_report_callback(uint8_t report_id, hid_report_type_t report_type, uint8_t const* buffer, uint16_t bufsize)
+    {
+        Serial.print("received host report id=");
+        Serial.print(report_id);
+        Serial.print(" type=");
+        Serial.print(report_type);
+        Serial.print(" bytes=");
+        for (uint16_t i = 0; i < bufsize; i++) {
+            Serial.print(buffer[i], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+    }
 }
 
 bool HIDController::begin()
@@ -50,6 +77,7 @@ bool HIDController::begin()
     // Initialize the HID device with the report descriptor
     m_hid.setReportDescriptor(hid_report_descriptor, sizeof(hid_report_descriptor));
     m_hid.setPollInterval(HID_REPORT_INTERVAL_MS);
+    m_hid.setReportCallback(nullptr, set_report_callback);
     m_hid.begin();
 
     // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
