@@ -164,16 +164,6 @@
 // Must stay within the signed 16-bit range; no runtime clamp is applied.
 #define AXIS_LIMIT 350 // 1..32767; higher values increase maximum on-screen velocity
 
-#ifdef BOARD_RP2350
-#define HID_REPORT_INTERVAL_MS 4 // 4 ms interval for sending HID reports (250 Hz) current Core 1 roundtrip time is ~2ms
-#else
-#ifdef BOARD_RP2040
-#define HID_REPORT_INTERVAL_MS 7 // 7 ms HID interval (~142.9 Hz); RP2040 filter runtime (level-1 light telemetry): avg ~6.61 ms, observed max ~7.90 ms
-#else
-#define HID_REPORT_INTERVAL_MS 20 // Default to 20 ms interval for sending HID reports (50 Hz) for unknown boards
-#endif
-#endif
-
 // =============================================================================
 // DEBUGGING AND PROFILING
 // =============================================================================

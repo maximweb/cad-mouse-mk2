@@ -171,6 +171,7 @@ void loop()
     const uint32_t now = millis();
     float rawSensorData[9];
     uint8_t sensor_status;
+    bool send_hid_report = false;
 
     StateMachine::State current_state = stateMachine.get_state();
 
@@ -266,13 +267,16 @@ void loop()
                 for (int index = 0; index < 12; ++index) {
                     latest_estimated_state[index] = local_filtered.state[index];
                 }
+                send_hid_report = true;
 
+#if DEBUG_MAIN_PRINT_CORE1_DURATION
                 // Print roundtrip time between consecutive readings->filtering->return
                 // Implies frequency of HID updates must be less than this
                 float dt_ms = local_filtered.dt * 1e3;
                 MAIN_TIMING_LOG_PRINT("Filter DT: ");
                 MAIN_TIMING_LOG_PRINT(dt_ms);
                 MAIN_TIMING_LOG_PRINTLN(" ms");
+#endif
 
 #if DEBUG_MAIN_SERIAL
                 // Print the latest estimated state for debugging
@@ -371,20 +375,31 @@ void loop()
     if (left_button_state == ButtonController::ButtonState::PRESSED) {
         MAIN_LOG_PRINTLN("Left button pressed");
         buttons |= 0x0001; // Set bit 0 for left button press
+        send_hid_report = true;
     }
     else if (left_button_state == ButtonController::ButtonState::RELEASED) {
         MAIN_LOG_PRINTLN("Left button released");
         buttons &= ~0x0001; // Clear bit 0 for left button release
+        send_hid_report = true;
     }
     if (right_button_state == ButtonController::ButtonState::PRESSED) {
         MAIN_LOG_PRINTLN("Right button pressed");
         buttons |= 0x0002; // Set bit 1 for right button press
+        send_hid_report = true;
     }
     else if (right_button_state == ButtonController::ButtonState::RELEASED) {
         MAIN_LOG_PRINTLN("Right button released");
         buttons &= ~0x0002; // Clear bit 1 for right button release
+        send_hid_report = true;
     }
-    hidController.sendReport(latest_estimated_state, buttons, false);
+
+    if (send_hid_report) {
+        // New data from Core 1 or a button has changed
+        hidController.sendReport(latest_estimated_state, buttons, false);
+    } else {
+        // Data has not changed; just run the HID task
+        hidController.task();
+    }
 
     // LED controller update
     ledController.update(latest_estimated_state[0], latest_estimated_state[1], latest_estimated_state[2], latest_estimated_state[3], latest_estimated_state[4], latest_estimated_state[5]);

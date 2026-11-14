@@ -49,7 +49,7 @@ bool HIDController::begin()
 
     // Initialize the HID device with the report descriptor
     m_hid.setReportDescriptor(hid_report_descriptor, sizeof(hid_report_descriptor));
-    m_hid.setPollInterval(HID_REPORT_INTERVAL_MS);
+    m_hid.setPollInterval(1); // Force 1000Hz polling to catch data changes ranging from 2ms (RP2350) to 6ms (RP2040)
     m_hid.begin();
 
     // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
@@ -99,7 +99,7 @@ void HIDController::sendReport(float filtered_state[12], uint16_t buttons, bool 
 
     const uint32_t now = millis();
 
-    // Button report only sent when changed, regardless of HID_REPORT_INTERVAL_MS
+    // Button report only sent when changed
     ReportButtons new_buttons = makeReportButtons(buttons);
     bool buttons_changed = buttonsChanged(new_buttons);
     if (buttons_changed) {
@@ -107,11 +107,6 @@ void HIDController::sendReport(float filtered_state[12], uint16_t buttons, bool 
         m_hid.sendReport(0x03, &m_report_buttons, sizeof(m_report_buttons));
         task();
         m_last_sent_time_ms = now; // Update the timestamp of the last sent report
-    }
-
-    // Check if enough time has passed since the last axes report was sent
-    if (now - m_last_sent_time_ms < HID_REPORT_INTERVAL_MS && !forceUpdate) {
-        return;
     }
 
     ReportAxes new_axes = makeReportAxes(filtered_state);
